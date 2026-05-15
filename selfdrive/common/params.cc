@@ -330,6 +330,7 @@ std::unordered_map<std::string, uint32_t> keys = {
     {"dp_atl", PERSISTENT},
     {"OPKRNaviSelect", PERSISTENT},
     {"OPKRTimeZone", PERSISTENT},
+    {"OpkrSettingsPresetVersion", PERSISTENT},
     {"E2ELong", PERSISTENT},
     {"OSMEnable", PERSISTENT},
     {"OSMSpeedLimitEnable", PERSISTENT},

@@ -26,6 +26,18 @@ from selfdrive.version import is_dirty, get_commit, get_version, get_origin, get
 
 sys.path.append(os.path.join(BASEDIR, "pyextra"))
 
+OPKR_SETTINGS_PRESET_VERSION = "2026-05-15-copy-defaults"
+OPKR_SETTINGS_PRESET_PARAMS: List[Tuple[str, str]] = [
+    ("CruiseGapBySpdOn", "1"),
+    ("CruiseSetwithRoadLimitSpeedEnabled", "1"),
+    ("CruiseSetwithRoadLimitSpeedOffset", "5"),
+    ("OPKREarlyStop", "1"),
+    ("HoldForSetting", "0"),
+    ("CruiseOverMaxSpeed", "1"),
+    ("OPKRNaviSelect", "4"),
+    ("OpkrBattLess", "1"),
+]
+
 
 def manager_init() -> None:
   # update system time from panda
@@ -245,6 +257,7 @@ def manager_init() -> None:
     ("CruiseSetwithRoadLimitSpeedEnabled", "1"),
     ("CruiseSetwithRoadLimitSpeedOffset", "5"),
     ("SetSpeedFive", "0"),
+    ("OpkrSettingsPresetVersion", ""),
    ]
   if not PC:
     default_params.append(("LastUpdateTime", datetime.datetime.utcnow().isoformat().encode('utf8')))
@@ -259,6 +272,11 @@ def manager_init() -> None:
   for k, v in default_params:
     if params.get(k) is None:
       params.put(k, v)
+
+  if params.get("OpkrSettingsPresetVersion", encoding="utf8") != OPKR_SETTINGS_PRESET_VERSION:
+    for k, v in OPKR_SETTINGS_PRESET_PARAMS:
+      params.put(k, v)
+    params.put("OpkrSettingsPresetVersion", OPKR_SETTINGS_PRESET_VERSION)
 
   # is this dashcam?
   if os.getenv("PASSIVE") is not None:
