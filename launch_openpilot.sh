@@ -5,9 +5,14 @@ if [ -f "/data/opkr_compiling" ]; then
     rm -f /data/opkr_compiling
     rm -f /data/openpilot/prebuilt
 else
+    BUILD_READY=1
+    if [ ! -f "/data/openpilot/cereal/messaging/messaging_pyx.so" ] || [ ! -f "/data/openpilot/selfdrive/ui/_ui" ]; then
+        BUILD_READY=0
+        rm -f /data/openpilot/prebuilt
+    fi
     if [ -f "/data/params/d/PutPrebuiltOn" ]; then
         PREBUILT_CHECK=$(cat /data/params/d/PutPrebuiltOn)
-        if [[ "$PREBUILT_CHECK" == "1" && ! -f "/data/openpilot/prebuilt" ]]; then
+        if [[ "$PREBUILT_CHECK" == "1" && "$BUILD_READY" == "1" && ! -f "/data/openpilot/prebuilt" ]]; then
             touch /data/openpilot/prebuilt
         fi
     fi
