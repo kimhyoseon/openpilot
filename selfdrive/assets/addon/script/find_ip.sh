@@ -6,12 +6,15 @@ export PATH=/usr/local/bin:/data/data/com.termux/files/usr/bin:/data/data/com.te
 export PYTHONPATH=/data/openpilot
 
 cd /data/openpilot
+[ -f /data/params/d/ExternalDeviceIP ] || exit 0
 IP_FILE=$(cat /data/params/d/ExternalDeviceIP)
+[ -n "$IP_FILE" ] || exit 0
 
 OIFS=$IFS
 IFS=',' read -r -a array <<< "$IP_FILE"
 
 for NUM in "${!array[@]}"; do
+  [ -n "${array[NUM]}" ] || continue
   ping -c 1 -W 1 ${array[NUM]}
   if [ $(echo $?) == "0" ]; then
     nc -vz ${array[NUM]} 5555
