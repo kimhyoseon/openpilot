@@ -5,14 +5,282 @@ import threading
 import time
 import subprocess
 import re
+import json
+import select
+import socket
+import struct
 
 import cereal.messaging as messaging
 from common.params import Params
 from common.realtime import DT_TRML
+from selfdrive.hardware import TICI
 
 import zmq
 
 # OPKR, this is for getting navi data from external device.
+
+APILOT_BROADCAST_PORT = 7708
+APILOT_RECEIVE_PORT = 7707
+APILOT_SERVICE_MSG_C2 = "APMSERVICE:C2:V1"
+APILOT_SERVICE_MSG_C3 = "APMSERVICE:C3:V1"
+
+
+def _to_int(value, default=0):
+  try:
+    if value is None or value == "":
+      return default
+    return int(float(value))
+  except (TypeError, ValueError):
+    return default
+
+
+def _to_float(value, default=0.):
+  try:
+    if value is None or value == "":
+      return default
+    return float(value)
+  except (TypeError, ValueError):
+    return default
+
+
+def _to_bool(value):
+  if isinstance(value, bool):
+    return value
+  return bool(_to_int(value, 0))
+
+
+def _get_broadcast_address():
+  try:
+    import fcntl
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+      data = fcntl.ioctl(sock.fileno(), 0x8919, struct.pack("256s", b"wlan0"))
+      return socket.inet_ntoa(data[20:24])
+  except Exception:
+    return "255.255.255.255"
+
+
+def _apilot_send_discovery(sock, remote_addr=None):
+  msg = APILOT_SERVICE_MSG_C3 if TICI else APILOT_SERVICE_MSG_C2
+  targets = [(_get_broadcast_address(), APILOT_BROADCAST_PORT)]
+  if remote_addr is not None:
+    targets.append((remote_addr[0], APILOT_BROADCAST_PORT))
+
+  for target in targets:
+    try:
+      sock.sendto(msg.encode(), target)
+    except Exception:
+      pass
+
+
+def _apilot_publish(pm, data, opkr_debug=False):
+  navi_msg = messaging.new_message('liveENaviData')
+  navi_msg.liveENaviData.speedLimit = _to_int(data.get("speedLimit"))
+  navi_msg.liveENaviData.safetyDistance = _to_float(data.get("safetyDistance"))
+  navi_msg.liveENaviData.safetySign = _to_int(data.get("safetySign"))
+  navi_msg.liveENaviData.turnInfo = _to_int(data.get("turnInfo"))
+  navi_msg.liveENaviData.distanceToTurn = _to_float(data.get("distanceToTurn"))
+  navi_msg.liveENaviData.connectionAlive = _to_bool(data.get("connectionAlive"))
+  navi_msg.liveENaviData.roadLimitSpeed = _to_int(data.get("roadLimitSpeed"))
+  navi_msg.liveENaviData.linkLength = _to_int(data.get("linkLength"))
+  navi_msg.liveENaviData.currentLinkAngle = _to_int(data.get("currentLinkAngle"))
+  navi_msg.liveENaviData.nextLinkAngle = _to_int(data.get("nextLinkAngle"))
+  navi_msg.liveENaviData.roadName = str(data.get("roadName") or "")
+  navi_msg.liveENaviData.isHighway = _to_bool(data.get("isHighway"))
+  navi_msg.liveENaviData.isTunnel = _to_bool(data.get("isTunnel"))
+
+  if opkr_debug:
+    navi_msg.liveENaviData.opkr0 = str(data.get("opkr0") or "")
+    navi_msg.liveENaviData.opkr1 = str(data.get("opkr1") or "")
+    navi_msg.liveENaviData.opkr2 = str(data.get("opkr2") or "")
+    navi_msg.liveENaviData.opkr3 = str(data.get("opkr3") or "")
+    navi_msg.liveENaviData.opkr4 = str(data.get("opkr4") or "")
+    navi_msg.liveENaviData.opkr5 = str(data.get("opkr5") or "")
+    navi_msg.liveENaviData.opkr6 = str(data.get("opkr6") or "")
+    navi_msg.liveENaviData.opkr7 = str(data.get("opkr7") or "")
+    navi_msg.liveENaviData.opkr8 = str(data.get("opkr8") or "")
+    navi_msg.liveENaviData.opkr9 = str(data.get("opkr9") or "")
+
+  pm.send('liveENaviData', navi_msg)
+
+
+def _apilot_handle_json(payload, state):
+  if "active" in payload:
+    state["active"] = _to_int(payload.get("active"))
+
+  road_limit = payload.get("road_limit")
+  if isinstance(road_limit, dict):
+    state["roadLimitSpeed"] = _to_int(road_limit.get("road_limit_speed"), state["roadLimitSpeed"])
+    state["isHighway"] = _to_bool(road_limit.get("is_highway"))
+
+    cam_speed = _to_int(road_limit.get("cam_limit_speed"), 0)
+    cam_dist = _to_float(road_limit.get("cam_limit_speed_left_dist"), 0.)
+    if cam_speed > 0:
+      state["speedLimit"] = cam_speed
+    if cam_dist > 0:
+      state["safetyDistance"] = cam_dist
+
+    cam_type = _to_int(road_limit.get("cam_type"), 0)
+    if cam_type > 0:
+      state["safetySign"] = cam_type
+
+  apilot = payload.get("apilot")
+  if isinstance(apilot, dict):
+    atype = str(apilot.get("type") or "")
+    value = apilot.get("value")
+
+    if atype == "opkrturninfo":
+      state["turnInfo"] = _to_int(value)
+    elif atype == "opkrdistancetoturn":
+      state["distanceToTurn"] = _to_float(value)
+    elif atype in ("opkrspddist", "opkr-spddist"):
+      state["safetyDistance"] = _to_float(value)
+    elif atype in ("opkrspdlimit", "opkr-spdlimit"):
+      state["speedLimit"] = _to_int(value)
+    elif atype in ("opkrsigntype", "opkr-signtype", "opkrroadsigntype"):
+      state["safetySign"] = _to_int(value)
+    elif atype in ("opkrroadlimitspeed", "opkrroadlimitspd", "opkrwazeroadspdlimit"):
+      state["roadLimitSpeed"] = _to_int(value)
+    elif atype in ("opkrroadname", "opkrwazeroadname"):
+      state["roadName"] = str(value or "")
+
+    for key in ("nRoadLimitSpeed", "nSdiSpeedLimit", "nSdiDist", "nTBTTurnType", "nTBTDist", "szPosRoadName"):
+      if key in apilot:
+        if key == "nRoadLimitSpeed":
+          road_speed = _to_int(apilot.get(key), 0)
+          if road_speed >= 200:
+            road_speed = int((road_speed - 20) / 10)
+          if road_speed > 0:
+            state["roadLimitSpeed"] = road_speed
+        elif key == "nSdiSpeedLimit" and _to_int(apilot.get(key), -1) > 0:
+          state["speedLimit"] = _to_int(apilot.get(key))
+        elif key == "nSdiDist" and _to_float(apilot.get(key), -1.) > 0:
+          state["safetyDistance"] = _to_float(apilot.get(key))
+        elif key == "nTBTTurnType" and _to_int(apilot.get(key), -1) >= 0:
+          state["turnInfo"] = _to_int(apilot.get(key))
+        elif key == "nTBTDist" and _to_float(apilot.get(key), -1.) > 0:
+          state["distanceToTurn"] = _to_float(apilot.get(key))
+        elif key == "szPosRoadName" and apilot.get(key):
+          state["roadName"] = str(apilot.get(key))
+
+
+def _apilot_udp_navid_thread(end_event, pm, opkr_debug):
+  state = {
+    "speedLimit": 0,
+    "safetyDistance": 0.,
+    "safetySign": 0,
+    "turnInfo": 0,
+    "distanceToTurn": 0.,
+    "connectionAlive": False,
+    "roadLimitSpeed": 0,
+    "linkLength": 0,
+    "currentLinkAngle": 0,
+    "nextLinkAngle": 0,
+    "roadName": "",
+    "isHighway": False,
+    "isTunnel": False,
+  }
+
+  remote_addr = None
+  last_rx_time = 0.
+  last_broadcast_time = 0.
+  last_gps_time = 0.
+  last_publish_time = 0.
+  request_gps = False
+
+  gps_sm = messaging.SubMaster(['gpsLocationExternal'], poll=['gpsLocationExternal'])
+
+  recv_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+  recv_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+  recv_sock.bind(('0.0.0.0', APILOT_RECEIVE_PORT))
+  recv_sock.setblocking(False)
+
+  send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+  send_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+
+  try:
+    while not end_event.is_set():
+      now = time.monotonic()
+
+      if now - last_broadcast_time > 5.:
+        _apilot_send_discovery(send_sock, remote_addr)
+        last_broadcast_time = now
+
+      try:
+        ready, _, _ = select.select([recv_sock], [], [], DT_TRML)
+      except Exception:
+        ready = []
+
+      if ready:
+        try:
+          raw, remote_addr = recv_sock.recvfrom(4096)
+          payload = json.loads(raw.decode())
+
+          if payload.get("request_gps") == 1:
+            request_gps = True
+          elif payload.get("request_gps") == 0:
+            request_gps = False
+
+          if "echo" in payload and remote_addr is not None:
+            try:
+              send_sock.sendto(json.dumps(payload["echo"]).encode(), (remote_addr[0], APILOT_BROADCAST_PORT))
+            except Exception:
+              pass
+
+          _apilot_handle_json(payload, state)
+          state["connectionAlive"] = True
+          last_rx_time = now
+
+          if opkr_debug:
+            state["opkr0"] = "APM UDP"
+            state["opkr1"] = f"{remote_addr[0]}:{remote_addr[1]}" if remote_addr else ""
+            state["opkr2"] = f"SL:{state['speedLimit']} DS:{int(state['safetyDistance'])}"
+            state["opkr3"] = f"RS:{state['roadLimitSpeed']}"
+            state["opkr4"] = str(state["roadName"])
+        except Exception as e:
+          if opkr_debug:
+            state["opkr0"] = "APM UDP parse error"
+            state["opkr1"] = str(e)
+
+      if request_gps and remote_addr is not None and now - last_gps_time > 1.:
+        try:
+          gps_sm.update(0)
+          location = gps_sm['gpsLocationExternal']
+          if location.accuracy < 10.:
+            json_location = json.dumps({"location": [
+              location.latitude,
+              location.longitude,
+              location.altitude,
+              location.speed,
+              location.bearingDeg,
+              location.accuracy,
+              location.timestamp,
+              location.verticalAccuracy,
+              location.bearingAccuracyDeg,
+              location.speedAccuracy,
+            ]})
+            send_sock.sendto(json_location.encode(), (remote_addr[0], APILOT_BROADCAST_PORT))
+        except Exception:
+          request_gps = False
+        last_gps_time = now
+
+      if now - last_rx_time > 6.:
+        state["connectionAlive"] = False
+        state["speedLimit"] = 0
+        state["safetyDistance"] = 0.
+        state["safetySign"] = 0
+        state["turnInfo"] = 0
+        state["distanceToTurn"] = 0.
+        state["roadLimitSpeed"] = 0
+        state["roadName"] = ""
+        state["isHighway"] = False
+        state["isTunnel"] = False
+
+      if now - last_publish_time > DT_TRML:
+        _apilot_publish(pm, state, opkr_debug)
+        last_publish_time = now
+  finally:
+    recv_sock.close()
+    send_sock.close()
 
 def navid_thread(end_event, nv_queue):
   pm = messaging.PubMaster(['liveENaviData'])
@@ -53,6 +321,10 @@ def navid_thread(end_event, nv_queue):
   ip_count = max(1, len([ip for ip in external_device_ip.split(',') if ip.strip()]))
   is_metric = Params().get_bool("IsMetric")
   navi_selection = int(Params().get("OPKRNaviSelect", encoding="utf8"))
+
+  if navi_selection == 4:
+    _apilot_udp_navid_thread(end_event, pm, OPKR_Debug)
+    return
 
   mtom3 = False
   mtom2 = False
