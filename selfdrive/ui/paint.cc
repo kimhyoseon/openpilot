@@ -1544,7 +1544,7 @@ static void draw_navi_button(UIState *s) {
 }
 
 static void draw_brake_light_indicator(UIState *s) {
-  const Rect &r = brake_light_indicator_rect;
+  const Rect r = brake_light_indicator_rect_for_width(s->fb_w);
   const bool active = s->scene.brakeLights;
   const int center_x = r.centerX();
   const int center_y = r.centerY();
