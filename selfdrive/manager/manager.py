@@ -26,8 +26,9 @@ from selfdrive.version import is_dirty, get_commit, get_version, get_origin, get
 
 sys.path.append(os.path.join(BASEDIR, "pyextra"))
 
-OPKR_SETTINGS_PRESET_VERSION = "2026-05-15-copy-defaults"
+OPKR_SETTINGS_PRESET_VERSION = "2026-05-15-copy-defaults-v2"
 OPKR_SETTINGS_PRESET_PARAMS: List[Tuple[str, str]] = [
+    ("PutPrebuiltOn", "1"),
     ("CruiseGapBySpdOn", "1"),
     ("CruiseSetwithRoadLimitSpeedEnabled", "1"),
     ("CruiseSetwithRoadLimitSpeedOffset", "5"),
