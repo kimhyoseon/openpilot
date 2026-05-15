@@ -418,8 +418,9 @@ class CarInterface(CarInterfaceBase):
           events.events.remove(EventName.wrongCarMode)
         if EventName.pcmDisable in events.events:
           events.events.remove(EventName.pcmDisable)
-      elif not self.CC.longcontrol and ret.cruiseState.enabled:
-        # do enable on decel button only
+      elif not self.CC.longcontrol and ret.cruiseState.available:
+        # do enable on decel button only. Some HKG cars only report SCC active
+        # after the low-speed SET press, so allow engagement from standby.
         if b.type == ButtonType.decelCruise and not b.pressed:
           events.add(EventName.buttonEnable)
 
