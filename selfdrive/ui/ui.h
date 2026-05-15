@@ -64,6 +64,8 @@ const Rect map_overlay_btn = {0, 465, 150, 150};
 const Rect map_return_btn = {1770, 465, 150, 150};
 const Rect map_btn = {1425, 905, 140, 140};
 const Rect mapbox_btn = {465, 905, 140, 140};
+const Rect brake_light_indicator_rect = {1105, 905, 140, 140};
+const Rect gear_step_indicator_rect = {1265, 905, 140, 140};
 const Rect rec_btn = {1745, 905, 140, 140};
 const Rect laneless_btn = {1585, 905, 140, 140};
 const Rect monitoring_btn = {50, 770, 140, 150};
@@ -254,6 +256,8 @@ typedef struct UIScene {
   bool animated_rpm;
   int max_animated_rpm;
   bool stop_line;
+  bool show_brake_light_indicator = true;
+  bool show_gear_step_indicator = true;
   int gear_step;
   float charge_meter;
   float multi_lat_selected;

@@ -14,7 +14,7 @@ from selfdrive.swaglog import cloudlog
 from selfdrive.boardd.boardd import can_list_to_can_capnp
 from selfdrive.car.car_helpers import get_car, get_startup_event, get_one_can
 from selfdrive.controls.lib.lane_planner import CAMERA_OFFSET, CAMERA_OFFSET_A
-from selfdrive.controls.lib.drive_helpers import update_v_cruise, initialize_v_cruise
+from selfdrive.controls.lib.drive_helpers import update_v_cruise, initialize_v_cruise, V_CRUISE_MAX
 from selfdrive.controls.lib.drive_helpers import get_lag_adjusted_curvature
 from selfdrive.controls.lib.longcontrol import LongControl
 from selfdrive.controls.lib.latcontrol_pid import LatControlPID
@@ -115,6 +115,7 @@ class Controls:
     self.batt_less = params.get_bool("OpkrBattLess")
     self.variable_cruise = params.get_bool('OpkrVariableCruise')
     self.cruise_over_maxspeed = params.get_bool('CruiseOverMaxSpeed')
+    self.cruise_max_speed_tap_up = params.get_bool('CruiseMaxSpeedTapUp')
     self.cruise_road_limit_spd_enabled = params.get_bool('CruiseSetwithRoadLimitSpeedEnabled')
     self.cruise_road_limit_spd_offset = int(params.get("CruiseSetwithRoadLimitSpeedOffset", encoding="utf8"))
     self.stock_lkas_on_disengaged_status = params.get_bool('StockLKASEnabled')
@@ -246,6 +247,8 @@ class Controls:
     self.pause_spdlimit = False
     self.osm_waze_off_spdlimit_init = False
     self.v_cruise_kph_set_timer = 0
+    self.driver_accel_tap_frames = 0
+    self.driver_accel_tap_over_max = False
     self.safety_speed = 0
     self.lkas_temporary_off = False
     self.gap_by_spd_on_temp = True
@@ -367,6 +370,7 @@ class Controls:
       self.map_enabled = Params().get_bool("OpkrMapEnable")
       self.live_sr = Params().get_bool("OpkrLiveSteerRatio")
       self.live_sr_percent = int(Params().get("LiveSteerRatioPercent", encoding="utf8"))
+      self.cruise_max_speed_tap_up = Params().get_bool("CruiseMaxSpeedTapUp")
       # E2ELongAlert
       if Params().get_bool("E2ELong") and self.e2e_long_alert_prev:
         self.events.add(EventName.e2eLongAlert)
@@ -548,6 +552,16 @@ class Controls:
 
     t_speed = 30 if IS_KPH else 20
     m_unit = CV.MS_TO_KPH if IS_KPH else CV.MS_TO_MPH
+    current_speed = round(CS.vEgo * m_unit)
+
+    driver_accel_tap = False
+    if CS.driverAcc:
+      self.driver_accel_tap_frames += 1
+      self.driver_accel_tap_over_max = self.driver_accel_tap_over_max or (t_speed <= self.v_cruise_kph < current_speed)
+    elif self.driver_accel_tap_frames > 0:
+      driver_accel_tap = self.driver_accel_tap_frames <= 70 and not self.driver_accel_tap_over_max
+      self.driver_accel_tap_frames = 0
+      self.driver_accel_tap_over_max = False
 
     if self.v_cruise_kph_set_timer > 0:
       self.v_cruise_kph_set_timer -= 1
@@ -579,12 +593,12 @@ class Controls:
             self.osm_waze_speedlimit = round(self.sm['liveENaviData'].wazeRoadSpeedLimit)
           elif self.osm_speedlimit_enabled:
             self.osm_waze_speedlimit = round(self.sm['liveMapData'].speedLimit)
-      elif CS.cruiseButtons == Buttons.RES_ACCEL and self.variable_cruise and CS.cruiseState.modeSel != 0 and t_speed <= self.v_cruise_kph_last <= round(CS.vEgo*m_unit):
+      elif CS.cruiseButtons == Buttons.RES_ACCEL and self.variable_cruise and CS.cruiseState.modeSel != 0 and t_speed <= self.v_cruise_kph_last <= current_speed:
         if self.cruise_road_limit_spd_enabled:
           self.cruise_road_limit_spd_switch = False
           self.cruise_road_limit_spd_switch_prev = self.sm['liveENaviData'].roadLimitSpeed
         self.v_cruise_kph_set_timer = 30
-        self.v_cruise_kph = round(CS.vEgo*m_unit)
+        self.v_cruise_kph = current_speed
         if round(CS.vSetDis)-1 > self.v_cruise_kph:
           self.v_cruise_kph = round(CS.vSetDis)
         self.v_cruise_kph_last = self.v_cruise_kph
@@ -612,10 +626,19 @@ class Controls:
             self.osm_waze_speedlimit = round(self.sm['liveENaviData'].wazeRoadSpeedLimit)
           elif self.osm_speedlimit_enabled:
             self.osm_waze_speedlimit = round(self.sm['liveMapData'].speedLimit)
-      elif CS.driverAcc and self.variable_cruise and (self.cruise_over_maxspeed or self.cruise_road_limit_spd_enabled) and t_speed <= self.v_cruise_kph < round(CS.vEgo*m_unit):
+      elif CS.driverAcc and self.variable_cruise and (self.cruise_over_maxspeed or self.cruise_road_limit_spd_enabled) and t_speed <= self.v_cruise_kph < current_speed:
         self.cruise_road_limit_spd_switch_prev = self.sm['liveENaviData'].roadLimitSpeed
         self.cruise_road_limit_spd_switch = False
-        self.v_cruise_kph = round(CS.vEgo*m_unit)
+        self.v_cruise_kph = current_speed
+        self.v_cruise_kph_last = self.v_cruise_kph
+      elif driver_accel_tap and self.cruise_max_speed_tap_up and self.variable_cruise and CS.cruiseState.modeSel != 0 and not CS.brakePressed and CS.cruiseButtons == 0:
+        if self.cruise_road_limit_spd_enabled:
+          self.cruise_road_limit_spd_switch_prev = self.sm['liveENaviData'].roadLimitSpeed
+          self.cruise_road_limit_spd_switch = False
+        target_speed = int(math.ceil(max(self.v_cruise_kph, t_speed) / 10.0) * 10)
+        if target_speed <= self.v_cruise_kph:
+          target_speed += 10
+        self.v_cruise_kph = clip(target_speed, t_speed, V_CRUISE_MAX)
         self.v_cruise_kph_last = self.v_cruise_kph
       elif self.variable_cruise and self.cruise_road_limit_spd_enabled and int(self.v_cruise_kph) != (int(self.sm['liveENaviData'].roadLimitSpeed) + self.cruise_road_limit_spd_offset) and 1 < int(self.sm['liveENaviData'].roadLimitSpeed) < 150 and self.cruise_road_limit_spd_switch:
         self.v_cruise_kph = int(self.sm['liveENaviData'].roadLimitSpeed) + self.cruise_road_limit_spd_offset

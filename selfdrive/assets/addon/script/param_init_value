@@ -2,7 +2,7 @@ OpkrAutoShutdown:2
 OpkrAutoScreenOff:-2
 OpkrUIBrightness:0
 OpkrUIVolumeBoost:0
-OpkrEnableDriverMonitoring:1
+OpkrEnableDriverMonitoring:0
 OpkrEnableLogger:0
 OpkrEnableGetoffAlert:0
 OpkrAutoResume:1
@@ -70,7 +70,8 @@ FingerprintTwoSet:0
 OpkrDrivingRecord:0
 OpkrTurnSteeringDisable:0
 OpkrHotspotOnBoot:0
-CruiseOverMaxSpeed:0
+CruiseOverMaxSpeed:1
+CruiseMaxSpeedTapUp:1
 JustDoGearD:0
 ComIssueGone:1
 SteerThreshold:150
@@ -92,6 +93,7 @@ CruiseGap4:16
 DynamicTRGap:1
 DynamicTRSpd:0,20,40,60,110
 DynamicTRSet:1.2,1.3,1.4,1.5,1.6
+OpkrBattLess:1
 CustomTREnabled:1
 LCTimingFactorUD:1
 LCTimingFactor30:10
@@ -117,6 +119,7 @@ OCurvSpeedT:35,45,60,70,80
 OSMCustomSpeedLimitC:30,40,50,60,70,90
 OSMCustomSpeedLimitT:30,40,65,72,80,95
 StockNaviSpeedEnabled:0
+OPKRNaviSelect:4
 E2ELong:0
 OSMEnable:0
 OSMSpeedLimitEnable:0
@@ -142,6 +145,8 @@ UseStockDecelOnSS:0
 AnimatedRPM:1
 AnimatedRPMMax:3600
 ShowStopLine:0
+ShowBrakeLight:1
+ShowGearStep:1
 NoSmartMDPS:0
 MultipleLateralUse:2
 MultipleLateralOpS:3,3,0
@@ -150,7 +155,7 @@ MultipleLateralOpA:3,3,0
 MultipleLateralAng:20,35
 StoppingDist:38
 SpeedCameraOffset:0
-HoldForSetting:1
+HoldForSetting:0
 RTShield:1
 OSMOfflineUse:0
 StopAtStopSign:0
@@ -159,9 +164,9 @@ OPKRSpeedBump:0
 OPKREarlyStop:1
 DoNotDisturbMode:0
 DepartChimeAtResume:0
-CruiseGapBySpdOn:0
+CruiseGapBySpdOn:1
 CruiseGapBySpdSpd:25,65,130
 CruiseGapBySpdGap:1,2,3,4
-CruiseSetwithRoadLimitSpeedEnabled:0
-CruiseSetwithRoadLimitSpeedOffset:0
+CruiseSetwithRoadLimitSpeedEnabled:1
+CruiseSetwithRoadLimitSpeedOffset:5
 SetSpeedFive:0

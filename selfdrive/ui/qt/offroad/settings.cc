@@ -509,6 +509,8 @@ UIPanel::UIPanel(QWidget *parent) : QFrame(parent) {
   layout->addWidget(new RPMAnimatedToggle());
   layout->addWidget(new RPMAnimatedMaxValue());
   layout->addWidget(new ShowStopLineToggle());
+  layout->addWidget(new ShowBrakeLightToggle());
+  layout->addWidget(new ShowGearStepToggle());
   layout->addWidget(new HoldForSettingToggle());
   layout->addWidget(new RTShieldToggle());
   layout->addWidget(new OSMOfflineUseToggle());
@@ -542,6 +544,7 @@ DrivingPanel::DrivingPanel(QWidget *parent) : QFrame(parent) {
   layout->addWidget(new SteerAngleCorrection());
   layout->addWidget(new TurnSteeringDisableToggle());
   layout->addWidget(new CruiseOverMaxSpeedToggle());
+  layout->addWidget(new CruiseMaxSpeedTapUpToggle());
   layout->addWidget(new OSMEnabledToggle());
   layout->addWidget(new OSMSpeedLimitEnabledToggle());
   layout->addWidget(new StockNaviSpeedToggle());

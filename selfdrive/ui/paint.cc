@@ -1543,6 +1543,69 @@ static void draw_navi_button(UIState *s) {
   }
 }
 
+static void draw_brake_light_indicator(UIState *s) {
+  const Rect &r = brake_light_indicator_rect;
+  const bool active = s->scene.brakeLights;
+  const int center_x = r.centerX();
+  const int center_y = r.centerY();
+  const NVGcolor stroke_color = active ? nvgRGBA(255, 70, 70, 180) : nvgRGBA(255, 255, 255, 70);
+  const NVGcolor fill_color = active ? nvgRGBA(255, 0, 0, 90) : nvgRGBA(0, 0, 0, 20);
+  const NVGcolor icon_color = active ? nvgRGBA(255, 80, 80, 230) : nvgRGBA(255, 255, 255, 80);
+
+  nvgSave(s->vg);
+  nvgTextAlign(s->vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+  nvgBeginPath(s->vg);
+  nvgRoundedRect(s->vg, r.x, r.y, r.w, r.h, 100);
+  nvgFillColor(s->vg, fill_color);
+  nvgFill(s->vg);
+  nvgStrokeColor(s->vg, stroke_color);
+  nvgStrokeWidth(s->vg, 6);
+  nvgStroke(s->vg);
+
+  nvgStrokeColor(s->vg, icon_color);
+  nvgStrokeWidth(s->vg, 8);
+  nvgLineCap(s->vg, NVG_ROUND);
+  nvgBeginPath(s->vg);
+  nvgMoveTo(s->vg, center_x - 35, center_y - 15);
+  nvgBezierTo(s->vg, center_x - 55, center_y + 5, center_x - 55, center_y + 40, center_x - 25, center_y + 42);
+  nvgMoveTo(s->vg, center_x + 35, center_y - 15);
+  nvgBezierTo(s->vg, center_x + 55, center_y + 5, center_x + 55, center_y + 40, center_x + 25, center_y + 42);
+  nvgStroke(s->vg);
+
+  nvgFontFace(s->vg, "sans-bold");
+  nvgFontSize(s->vg, 30);
+  nvgFillColor(s->vg, icon_color);
+  nvgText(s->vg, center_x, center_y - 8, "BRAKE", NULL);
+  nvgRestore(s->vg);
+}
+
+static void draw_gear_step_indicator(UIState *s) {
+  const int gear_step = s->scene.gear_step;
+  if (gear_step <= 0 || gear_step >= 9) return;
+
+  const Rect &r = gear_step_indicator_rect;
+  const int center_x = r.centerX();
+  const int center_y = r.centerY();
+
+  nvgSave(s->vg);
+  nvgTextAlign(s->vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+  nvgBeginPath(s->vg);
+  nvgRoundedRect(s->vg, r.x, r.y, r.w, r.h, 100);
+  nvgFillColor(s->vg, nvgRGBA(0, 0, 0, 20));
+  nvgFill(s->vg);
+  nvgStrokeColor(s->vg, nvgRGBA(255, 255, 255, 80));
+  nvgStrokeWidth(s->vg, 6);
+  nvgStroke(s->vg);
+
+  char gear_step_str[4];
+  snprintf(gear_step_str, sizeof(gear_step_str), "%d", gear_step);
+  nvgFontFace(s->vg, "sans-bold");
+  nvgFontSize(s->vg, 82);
+  nvgFillColor(s->vg, COLOR_YELLOW_ALPHA(230));
+  nvgText(s->vg, center_x, center_y + 2, gear_step_str, NULL);
+  nvgRestore(s->vg);
+}
+
 static void draw_laneless_button(UIState *s) {
   int btn_w = 140;
   int btn_h = 140;
@@ -1648,6 +1711,12 @@ static void ui_draw_vision_header(UIState *s) {
       draw_safetysign(s);
     }
     draw_compass(s);
+    if (s->scene.show_brake_light_indicator) {
+      draw_brake_light_indicator(s);
+    }
+    if (s->scene.show_gear_step_indicator) {
+      draw_gear_step_indicator(s);
+    }
     if (s->scene.navi_select > 0 || s->scene.mapbox_running) {
       draw_navi_button(s);
     }

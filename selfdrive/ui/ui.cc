@@ -646,6 +646,8 @@ static void update_status(UIState *s) {
     s->scene.osm_enabled = params.getBool("OSMEnable") || params.getBool("OSMSpeedLimitEnable") || std::stoi(params.get("CurvDecelOption")) == 1 || std::stoi(params.get("CurvDecelOption")) == 3;
     s->scene.animated_rpm = params.getBool("AnimatedRPM");
     s->scene.stop_line = params.getBool("ShowStopLine");
+    s->scene.show_brake_light_indicator = params.getBool("ShowBrakeLight");
+    s->scene.show_gear_step_indicator = params.getBool("ShowGearStep");
     s->scene.lateralControlMethod = std::stoi(params.get("LateralControlMethod"));
     s->scene.do_not_disturb_mode = std::stoi(params.get("DoNotDisturbMode"));
     s->scene.depart_chime_at_resume = params.getBool("DepartChimeAtResume");

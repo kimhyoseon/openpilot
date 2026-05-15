@@ -354,6 +354,18 @@ public:
   }
 };
 
+class CruiseMaxSpeedTapUpToggle : public ToggleControl {
+  Q_OBJECT
+
+public:
+  CruiseMaxSpeedTapUpToggle() : ToggleControl(tr("Accel Tap MaxSpeed Up"), tr("When using cruise, briefly tap and release the accelerator to raise the max speed to the next 10-unit step."), "../assets/offroad/icon_shell.png", Params().getBool("CruiseMaxSpeedTapUp")) {
+    QObject::connect(this, &CruiseMaxSpeedTapUpToggle::toggleFlipped, [=](int state) {
+      bool status = state ? true : false;
+      Params().putBool("CruiseMaxSpeedTapUp", status);
+    });
+  }
+};
+
 class DebugUiOneToggle : public ToggleControl {
   Q_OBJECT
 
@@ -833,6 +845,32 @@ public:
     QObject::connect(this, &ShowStopLineToggle::toggleFlipped, [=](int state) {
       bool status = state ? true : false;
       Params().putBool("ShowStopLine", status);
+    });
+  }
+};
+
+class ShowBrakeLightToggle : public ToggleControl {
+  Q_OBJECT
+
+public:
+  ShowBrakeLightToggle() : ToggleControl(tr("Show Brake Light"), tr("Show the brake light indicator on the driving screen."), "../assets/offroad/icon_shell.png", Params().getBool("ShowBrakeLight")) {
+    QObject::connect(this, &ShowBrakeLightToggle::toggleFlipped, [=](int state) {
+      bool status = state ? true : false;
+      Params().putBool("ShowBrakeLight", status);
+      QUIState::ui_state.scene.show_brake_light_indicator = status;
+    });
+  }
+};
+
+class ShowGearStepToggle : public ToggleControl {
+  Q_OBJECT
+
+public:
+  ShowGearStepToggle() : ToggleControl(tr("Show Gear Step"), tr("Show the current gear step on the driving screen."), "../assets/offroad/icon_shell.png", Params().getBool("ShowGearStep")) {
+    QObject::connect(this, &ShowGearStepToggle::toggleFlipped, [=](int state) {
+      bool status = state ? true : false;
+      Params().putBool("ShowGearStep", status);
+      QUIState::ui_state.scene.show_gear_step_indicator = status;
     });
   }
 };
