@@ -4,7 +4,7 @@ import os
 import usb1
 import time
 import subprocess
-from typing import NoReturn
+from typing import NoReturn, Optional
 from functools import cmp_to_key
 
 from common.spinner import Spinner
@@ -12,6 +12,19 @@ from panda import DEFAULT_FW_FN, DEFAULT_H7_FW_FN, MCU_TYPE_H7, Panda, PandaDFU
 from common.basedir import BASEDIR
 from common.params import Params
 from selfdrive.swaglog import cloudlog
+
+PANDA_OFFLINE_DIAG = "/data/log/panda_offline_last.txt"
+
+
+def write_panda_diag(reason: str, details: Optional[str] = None) -> None:
+  try:
+    os.makedirs(os.path.dirname(PANDA_OFFLINE_DIAG), exist_ok=True)
+    with open(PANDA_OFFLINE_DIAG, "w") as f:
+      f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {reason}\n")
+      if details is not None:
+        f.write(f"{details}\n")
+  except Exception:
+    cloudlog.exception("Failed to write panda offline diagnostic")
 
 
 def get_expected_signature(panda: Panda) -> bytes:
@@ -77,25 +90,43 @@ def panda_sort_cmp(a: Panda, b: Panda):
 def main() -> NoReturn:
   first_run = True
   params = Params()
+  missing_panda_count = 0
+  saw_panda_issue = False
 
   while True:
+    pandas = []
     try:
       params.delete("PandaSignatures")
 
       # Flash all Pandas in DFU mode
-      for p in PandaDFU.list():
+      dfu_serials = PandaDFU.list()
+      for p in dfu_serials:
         cloudlog.info(f"Panda in DFU mode found, flashing recovery {p}")
-        PandaDFU(p).recover()
+        try:
+          PandaDFU(p).recover()
+        except Exception:
+          write_panda_diag("dfu_recover_failed", p)
+          cloudlog.exception("Panda DFU recovery failed")
       time.sleep(1)
 
       panda_serials = Panda.list()
       if len(panda_serials) == 0:
+        missing_panda_count += 1
+        saw_panda_issue = True
+        if missing_panda_count == 1 or missing_panda_count % 10 == 0:
+          cloudlog.warning(f"No pandas found, retrying ({missing_panda_count})")
+          write_panda_diag("no_pandas_found", f"count={missing_panda_count}, dfu={dfu_serials}")
+        time.sleep(1)
         continue
+
+      if missing_panda_count > 0:
+        cloudlog.warning(f"Panda(s) found after {missing_panda_count} missing checks")
+        write_panda_diag("pandas_found_after_missing", f"count={missing_panda_count}, serials={panda_serials}")
+      missing_panda_count = 0
 
       cloudlog.info(f"{len(panda_serials)} panda(s) found, connecting - {panda_serials}")
 
       # Flash pandas
-      pandas = []
       for serial in panda_serials:
         pandas.append(flash_panda(serial))
 
@@ -106,9 +137,14 @@ def main() -> NoReturn:
           params.put_bool("PandaHeartbeatLost", True)
           cloudlog.event("heartbeat lost", deviceState=health, serial=panda.get_usb_serial())
 
-        #if first_run:
-        #  cloudlog.info(f"Resetting panda {panda.get_usb_serial()}")
-        #  panda.reset()
+        if saw_panda_issue:
+          cloudlog.info(f"Resetting panda after offline recovery {panda.get_usb_serial()}")
+          try:
+            panda.reset()
+          except Exception:
+            write_panda_diag("panda_reset_after_recovery_failed", panda.get_usb_serial())
+            cloudlog.exception("Panda reset after offline recovery failed")
+            raise
 
       # sort pandas to have deterministic order
       pandas.sort(key=cmp_to_key(panda_sort_cmp))
@@ -120,9 +156,29 @@ def main() -> NoReturn:
       # close all pandas
       for p in pandas:
         p.close()
+      saw_panda_issue = False
     except (usb1.USBErrorNoDevice, usb1.USBErrorPipe):
       # a panda was disconnected while setting everything up. let's try again
+      saw_panda_issue = True
+      write_panda_diag("usb_exception_while_setting_up")
       cloudlog.exception("Panda USB exception while setting up")
+      for p in pandas:
+        try:
+          p.close()
+        except Exception:
+          pass
+      time.sleep(1)
+      continue
+    except Exception:
+      saw_panda_issue = True
+      write_panda_diag("pandad_uncaught_exception")
+      cloudlog.exception("Uncaught pandad exception")
+      for p in pandas:
+        try:
+          p.close()
+        except Exception:
+          pass
+      time.sleep(1)
       continue
 
     first_run = False

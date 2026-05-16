@@ -28,7 +28,7 @@ services = {
   "deviceState": (True, 2., 1),
   "can": (True, 100.),
   "controlsState": (True, 100., 10),
-  "pandaStates": (True, 2., 1),
+  "pandaStates": (True, 10., 1),
   "peripheralState": (True, 2., 1),
   "radarState": (True, 20., 5),
   "roadEncodeIdx": (False, 20., 1),

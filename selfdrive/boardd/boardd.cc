@@ -433,29 +433,49 @@ void panda_state_thread(PubMaster *pm, std::vector<Panda *> pandas, bool spoofin
   Panda *peripheral_panda = pandas[0];
   bool ignition_last = false;
   std::future<bool> safety_future;
+  unsigned int cnt = 0;
 
   LOGD("start panda state thread");
 
-  // run at 2hz
+  // run at 10hz. peripheralState remains 2hz below.
   while (!do_exit && check_all_connected(pandas)) {
     uint64_t start_time = nanos_since_boot();
+    cnt++;
 
-    // send out peripheralState
-    send_peripheral_state(pm, peripheral_panda);
+    if (cnt % 5 == 1) {
+      send_peripheral_state(pm, peripheral_panda);
+    }
     auto ignition_opt = send_panda_states(pm, pandas, spoofing_started);
 
     if (!ignition_opt) {
+      LOGE("Failed to get panda state");
+      if (!ignition) {
+        do_exit = true;
+        break;
+      }
+      util::sleep_for(100);
       continue;
     }
 
     ignition = *ignition_opt;
 
-    // TODO: make this check fast, currently takes 16ms
-    // check if we have new pandas and are offroad
-    if (!ignition && (pandas.size() != Panda::list().size())) {
-      LOGW("Reconnecting to changed amount of pandas!");
-      do_exit = true;
-      break;
+    if (!ignition) {
+      bool comms_healthy = true;
+      for (const auto &panda : pandas) {
+        comms_healthy &= panda->comms_healthy;
+      }
+
+      // TODO: make this check fast, currently takes 16ms
+      // check if we have new/missing pandas and are offroad
+      if (!comms_healthy) {
+        LOGE("Reconnecting, communication to pandas not healthy");
+        do_exit = true;
+        break;
+      } else if (pandas.size() != Panda::list().size()) {
+        LOGW("Reconnecting to changed amount of pandas!");
+        do_exit = true;
+        break;
+      }
     }
 
     // clear ignition-based params and set new safety on car start
@@ -480,7 +500,9 @@ void panda_state_thread(PubMaster *pm, std::vector<Panda *> pandas, bool spoofin
     }
 
     uint64_t dt = nanos_since_boot() - start_time;
-    util::sleep_for(500 - dt / 1000000ULL);
+    if (dt < 100000000ULL) {
+      util::sleep_for(100 - dt / 1000000ULL);
+    }
   }
 }
 
@@ -495,6 +517,11 @@ void peripheral_control_thread(Panda *panda) {
   uint16_t ir_pwr = 0;
   uint16_t prev_ir_pwr = 999;
   bool prev_charging_disabled = false;
+  bool pending_charging_disabled = false;
+  uint64_t charging_change_t = nanos_since_boot();
+  const uint64_t charging_start_delay = 30ULL * 1000000000ULL;
+  const uint64_t charging_debounce = 5ULL * 1000000000ULL;
+  const uint64_t start_t = nanos_since_boot();
   unsigned int cnt = 0;
 
   FirstOrderFilter integ_lines_filter(0, 30.0, 0.05);
@@ -506,15 +533,23 @@ void peripheral_control_thread(Panda *panda) {
     if (!Hardware::PC() && sm.updated("deviceState")) {
       // Charging mode
       bool charging_disabled = sm["deviceState"].getDeviceState().getChargingDisabled();
-      if (charging_disabled != prev_charging_disabled) {
-        if (charging_disabled) {
+      uint64_t now = nanos_since_boot();
+      if (charging_disabled != pending_charging_disabled) {
+        pending_charging_disabled = charging_disabled;
+        charging_change_t = now;
+      }
+
+      if (!ignition && (now - start_t) > charging_start_delay &&
+          (now - charging_change_t) > charging_debounce &&
+          pending_charging_disabled != prev_charging_disabled) {
+        if (pending_charging_disabled) {
           panda->set_usb_power_mode(cereal::PeripheralState::UsbPowerMode::CLIENT);
           LOGW("TURN OFF CHARGING!\n");
         } else {
           panda->set_usb_power_mode(cereal::PeripheralState::UsbPowerMode::CDP);
           LOGW("TURN ON CHARGING!\n");
         }
-        prev_charging_disabled = charging_disabled;
+        prev_charging_disabled = pending_charging_disabled;
       }
     }
 

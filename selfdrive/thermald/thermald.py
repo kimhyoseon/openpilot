@@ -13,6 +13,7 @@ import psutil
 
 import cereal.messaging as messaging
 from cereal import log
+from cereal.services import service_list
 from common.dict_helpers import strip_deprecated_keys
 from common.filter_simple import FirstOrderFilter
 
@@ -35,7 +36,7 @@ NetworkStrength = log.DeviceState.NetworkStrength
 CURRENT_TAU = 15.   # 15s time constant
 TEMP_TAU = 5.   # 5s time constant
 DISCONNECT_TIMEOUT = 3.  # wait 5 seconds before going offroad after disconnect so you get an alert
-PANDA_STATES_TIMEOUT = int(1000 * 1.5 * DT_TRML)  # 1.5x the expected pandaState frequency
+PANDA_STATES_TIMEOUT = round(1000 / service_list['pandaStates'].frequency * 1.5)  # 1.5x the expected pandaState frequency
 
 ThermalBand = namedtuple("ThermalBand", ['min_temp', 'max_temp'])
 HardwareState = namedtuple("HardwareState", ['network_type', 'network_metered', 'network_strength', 'network_info', 'nvme_temps', 'modem_temps', 'wifi_address', 'connect_name', 'rsrp'])
@@ -247,6 +248,9 @@ def thermald_thread(end_event, hw_queue):
 
   while not end_event.is_set():
     sm.update(PANDA_STATES_TIMEOUT)
+
+    if sm.frame % round(service_list['pandaStates'].frequency * DT_TRML) != 0:
+      continue
 
     pandaStates = sm['pandaStates']
     peripheralState = sm['peripheralState']
