@@ -26,7 +26,7 @@ from selfdrive.version import is_dirty, get_commit, get_version, get_origin, get
 
 sys.path.append(os.path.join(BASEDIR, "pyextra"))
 
-OPKR_SETTINGS_PRESET_VERSION = "2026-05-15-copy-defaults-v2"
+OPKR_SETTINGS_PRESET_VERSION = "2026-05-16-apilot-navi-default"
 OPKR_SETTINGS_PRESET_PARAMS: List[Tuple[str, str]] = [
     ("PutPrebuiltOn", "1"),
     ("CruiseGapBySpdOn", "1"),
@@ -35,7 +35,7 @@ OPKR_SETTINGS_PRESET_PARAMS: List[Tuple[str, str]] = [
     ("OPKREarlyStop", "1"),
     ("HoldForSetting", "0"),
     ("CruiseOverMaxSpeed", "1"),
-    ("OPKRNaviSelect", "4"),
+    ("OPKRNaviSelect", "6"),
     ("OpkrBattLess", "1"),
 ]
 
@@ -190,7 +190,7 @@ def manager_init() -> None:
     ("OSMCustomSpeedLimitC", "30,40,50,60,70,90"),
     ("OSMCustomSpeedLimitT", "30,40,65,72,80,95"),
     ("StockNaviSpeedEnabled", "0"),
-    ("OPKRNaviSelect", "4"),
+    ("OPKRNaviSelect", "6"),
     ("dp_atl", "1"),
     ("E2ELong", "0"),
     ("GoogleMapEnabled", "0"),

@@ -5870,7 +5870,7 @@ void GetOffAlert::refresh() {
   }
 }
 
-OPKRNaviSelect::OPKRNaviSelect() : AbstractControl(tr("Navigation Select"), tr("Select the navigation you want to use.(None/Mappy/iNavi/Waze/TMapE/WazeE)"), "../assets/offroad/icon_shell.png") {
+OPKRNaviSelect::OPKRNaviSelect() : AbstractControl(tr("Navigation Select"), tr("Select the navigation you want to use.(None/Mappy/iNavi/Waze/TMapE/WazeE/APilot)"), "../assets/offroad/icon_shell.png") {
 
   label.setAlignment(Qt::AlignVCenter|Qt::AlignRight);
   label.setStyleSheet("color: #e0e879");
@@ -5904,7 +5904,7 @@ OPKRNaviSelect::OPKRNaviSelect() : AbstractControl(tr("Navigation Select"), tr("
     int value = str.toInt();
     value = value - 1;
     if (value <= -1) {
-      value = 5;
+      value = 6;
     } else if (value == 2) {
       value = 1;
     }
@@ -5916,7 +5916,7 @@ OPKRNaviSelect::OPKRNaviSelect() : AbstractControl(tr("Navigation Select"), tr("
     auto str = QString::fromStdString(params.get("OPKRNaviSelect"));
     int value = str.toInt();
     value = value + 1;
-    if (value >= 6) {
+    if (value >= 7) {
       value = 0;
     } else if (value == 2) {
       value = 3;
@@ -5936,6 +5936,7 @@ void OPKRNaviSelect::refresh() {
   } else if (option == "3") {label.setText(tr("Waze"));
   } else if (option == "4") {label.setText(tr("TMapE"));
   } else if (option == "5") {label.setText(tr("WazeE"));
+  } else if (option == "6") {label.setText(tr("APilot"));
   }
 }
 

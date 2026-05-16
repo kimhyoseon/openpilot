@@ -1086,7 +1086,7 @@ class Controls:
           controlsState.limitSpeedCamera = float(self.roadname_and_slc[r_index+1])
         except:
           pass
-    elif self.navi_selection == 4:
+    elif self.navi_selection in (4, 6):
       controlsState.limitSpeedCamera = int(round(self.sm['liveENaviData'].speedLimit))
       controlsState.limitSpeedCameraDist = float(self.sm['liveENaviData'].safetyDistance)
       controlsState.mapSign = int(self.sm['liveENaviData'].safetySign)

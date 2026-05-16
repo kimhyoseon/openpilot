@@ -23,6 +23,9 @@ APILOT_BROADCAST_PORT = 7708
 APILOT_RECEIVE_PORT = 7707
 APILOT_SERVICE_MSG_C2 = "APMSERVICE:C2:V1"
 APILOT_SERVICE_MSG_C3 = "APMSERVICE:C3:V1"
+NDA_BROADCAST_PORT = 2899
+NDA_RECEIVE_PORTS = (843, 2843)
+NDA_SERVICE_MSG = "EON:ROAD_LIMIT_SERVICE:v1"
 
 
 def _to_int(value, default=0):
@@ -59,17 +62,63 @@ def _get_broadcast_address():
     return "255.255.255.255"
 
 
-def _apilot_send_discovery(sock, remote_addr=None):
-  msg = APILOT_SERVICE_MSG_C3 if TICI else APILOT_SERVICE_MSG_C2
-  targets = [(_get_broadcast_address(), APILOT_BROADCAST_PORT)]
-  if remote_addr is not None:
-    targets.append((remote_addr[0], APILOT_BROADCAST_PORT))
+def _apilot_send_discovery(sock, remote_addr=None, include_nda=False, manual_hosts=None):
+  broadcast = _get_broadcast_address()
+  targets = [
+    (APILOT_SERVICE_MSG_C3 if TICI else APILOT_SERVICE_MSG_C2, broadcast, APILOT_BROADCAST_PORT),
+  ]
 
-  for target in targets:
+  if include_nda:
+    targets.append((NDA_SERVICE_MSG, broadcast, NDA_BROADCAST_PORT))
+
+  if remote_addr is not None:
+    targets.append((APILOT_SERVICE_MSG_C3 if TICI else APILOT_SERVICE_MSG_C2, remote_addr[0], APILOT_BROADCAST_PORT))
+    if include_nda:
+      targets.append((NDA_SERVICE_MSG, remote_addr[0], NDA_BROADCAST_PORT))
+
+  for host in manual_hosts or []:
+    targets.append((APILOT_SERVICE_MSG_C3 if TICI else APILOT_SERVICE_MSG_C2, host, APILOT_BROADCAST_PORT))
+    if include_nda:
+      targets.append((NDA_SERVICE_MSG, host, NDA_BROADCAST_PORT))
+
+  sent = set()
+  for msg, host, port in targets:
+    target = (host, port)
+    if target in sent:
+      continue
+    sent.add(target)
     try:
       sock.sendto(msg.encode(), target)
     except Exception:
       pass
+
+
+def _udp_receive_sockets(include_nda=False):
+  sockets = []
+  ports = [(APILOT_RECEIVE_PORT, "APM UDP")]
+
+  if include_nda:
+    ports.extend((port, "NDA UDP") for port in NDA_RECEIVE_PORTS)
+
+  last_exception = None
+  for port, protocol in ports:
+    try:
+      recv_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+      recv_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+      recv_sock.bind(('0.0.0.0', port))
+      recv_sock.setblocking(False)
+      sockets.append((recv_sock, protocol, port))
+    except Exception as e:
+      last_exception = e
+      try:
+        recv_sock.close()
+      except Exception:
+        pass
+
+  if not sockets and last_exception is not None:
+    raise last_exception
+
+  return sockets
 
 
 def _apilot_publish(pm, data, opkr_debug=False):
@@ -143,6 +192,34 @@ def _apilot_handle_json(payload, state):
     elif atype in ("opkrroadname", "opkrwazeroadname"):
       state["roadName"] = str(value or "")
 
+    n_sdi_type = _to_int(apilot.get("nSdiType"), -1)
+    n_sdi_dist = _to_float(apilot.get("nSdiDist"), -1.)
+    n_sdi_speed_limit = _to_int(apilot.get("nSdiSpeedLimit"), -1)
+    n_sdi_plus_type = _to_int(apilot.get("nSdiPlusType"), -1)
+    n_sdi_plus_dist = _to_float(apilot.get("nSdiPlusDist"), -1.)
+    n_sdi_plus_speed_limit = _to_int(apilot.get("nSdiPlusSpeedLimit"), -1)
+    n_sdi_block_dist = _to_float(apilot.get("nSdiBlockDist"), -1.)
+
+    if n_sdi_type in (0, 1, 2, 3, 4, 8) and n_sdi_speed_limit > 0:
+      state["speedLimit"] = n_sdi_speed_limit
+      sdi_dist = n_sdi_block_dist if n_sdi_type == 4 and n_sdi_block_dist > 0 else n_sdi_dist
+      if sdi_dist > 0:
+        state["safetyDistance"] = sdi_dist
+      state["safetySign"] = n_sdi_type
+    elif n_sdi_plus_type == 22 or n_sdi_type == 22:
+      state["speedLimit"] = 35
+      bump_dist = n_sdi_plus_dist if n_sdi_plus_type == 22 else n_sdi_dist
+      if bump_dist > 0:
+        state["safetyDistance"] = bump_dist
+      state["safetySign"] = 22
+    elif n_sdi_plus_speed_limit > 0 and n_sdi_plus_dist > 0:
+      state["speedLimit"] = n_sdi_plus_speed_limit
+      state["safetyDistance"] = n_sdi_plus_dist
+      state["safetySign"] = n_sdi_plus_type
+
+    if n_sdi_type == 24 or n_sdi_plus_type == 24:
+      state["isTunnel"] = True
+
     for key in ("nRoadLimitSpeed", "nSdiSpeedLimit", "nSdiDist", "nTBTTurnType", "nTBTDist", "szPosRoadName"):
       if key in apilot:
         if key == "nRoadLimitSpeed":
@@ -156,14 +233,28 @@ def _apilot_handle_json(payload, state):
         elif key == "nSdiDist" and _to_float(apilot.get(key), -1.) > 0:
           state["safetyDistance"] = _to_float(apilot.get(key))
         elif key == "nTBTTurnType" and _to_int(apilot.get(key), -1) >= 0:
-          state["turnInfo"] = _to_int(apilot.get(key))
+          state["turnInfo"] = _nda_turn_info(_to_int(apilot.get(key)))
         elif key == "nTBTDist" and _to_float(apilot.get(key), -1.) > 0:
           state["distanceToTurn"] = _to_float(apilot.get(key))
         elif key == "szPosRoadName" and apilot.get(key):
           state["roadName"] = str(apilot.get(key))
 
 
-def _apilot_udp_navid_thread(end_event, pm, opkr_debug):
+def _nda_turn_info(turn_type):
+  if turn_type in (12, 16):
+    return 1
+  if turn_type in (13, 19):
+    return 2
+  if turn_type in (7, 44, 17, 75, 102, 105, 112, 115, 76, 118):
+    return 3
+  if turn_type in (6, 43, 73, 74, 101, 104, 111, 114, 123, 124, 117):
+    return 4
+  if turn_type in (14, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 153, 154, 249):
+    return 5
+  return 0
+
+
+def _apilot_udp_navid_thread(end_event, pm, opkr_debug, include_nda=False, manual_hosts=None):
   state = {
     "speedLimit": 0,
     "safetyDistance": 0.,
@@ -181,6 +272,7 @@ def _apilot_udp_navid_thread(end_event, pm, opkr_debug):
   }
 
   remote_addr = None
+  remote_protocol = "APM UDP"
   last_rx_time = 0.
   last_broadcast_time = 0.
   last_gps_time = 0.
@@ -189,10 +281,7 @@ def _apilot_udp_navid_thread(end_event, pm, opkr_debug):
 
   gps_sm = messaging.SubMaster(['gpsLocationExternal'], poll=['gpsLocationExternal'])
 
-  recv_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-  recv_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-  recv_sock.bind(('0.0.0.0', APILOT_RECEIVE_PORT))
-  recv_sock.setblocking(False)
+  recv_socks = _udp_receive_sockets(include_nda)
 
   send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
   send_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -202,17 +291,19 @@ def _apilot_udp_navid_thread(end_event, pm, opkr_debug):
       now = time.monotonic()
 
       if now - last_broadcast_time > 5.:
-        _apilot_send_discovery(send_sock, remote_addr)
+        _apilot_send_discovery(send_sock, remote_addr, include_nda, manual_hosts)
         last_broadcast_time = now
 
       try:
-        ready, _, _ = select.select([recv_sock], [], [], DT_TRML)
+        ready, _, _ = select.select([sock for sock, _, _ in recv_socks], [], [], DT_TRML)
       except Exception:
         ready = []
 
-      if ready:
+      for ready_sock in ready:
         try:
-          raw, remote_addr = recv_sock.recvfrom(4096)
+          protocol = next((protocol for sock, protocol, _ in recv_socks if sock == ready_sock), "APM UDP")
+          raw, remote_addr = ready_sock.recvfrom(4096)
+          remote_protocol = protocol
           payload = json.loads(raw.decode())
 
           if payload.get("request_gps") == 1:
@@ -222,7 +313,8 @@ def _apilot_udp_navid_thread(end_event, pm, opkr_debug):
 
           if "echo" in payload and remote_addr is not None:
             try:
-              send_sock.sendto(json.dumps(payload["echo"]).encode(), (remote_addr[0], APILOT_BROADCAST_PORT))
+              port = NDA_BROADCAST_PORT if remote_protocol == "NDA UDP" else APILOT_BROADCAST_PORT
+              send_sock.sendto(json.dumps(payload["echo"]).encode(), (remote_addr[0], port))
             except Exception:
               pass
 
@@ -231,7 +323,7 @@ def _apilot_udp_navid_thread(end_event, pm, opkr_debug):
           last_rx_time = now
 
           if opkr_debug:
-            state["opkr0"] = "APM UDP"
+            state["opkr0"] = remote_protocol
             state["opkr1"] = f"{remote_addr[0]}:{remote_addr[1]}" if remote_addr else ""
             state["opkr2"] = f"SL:{state['speedLimit']} DS:{int(state['safetyDistance'])}"
             state["opkr3"] = f"RS:{state['roadLimitSpeed']}"
@@ -258,7 +350,8 @@ def _apilot_udp_navid_thread(end_event, pm, opkr_debug):
               location.bearingAccuracyDeg,
               location.speedAccuracy,
             ]})
-            send_sock.sendto(json_location.encode(), (remote_addr[0], APILOT_BROADCAST_PORT))
+            port = NDA_BROADCAST_PORT if remote_protocol == "NDA UDP" else APILOT_BROADCAST_PORT
+            send_sock.sendto(json_location.encode(), (remote_addr[0], port))
         except Exception:
           request_gps = False
         last_gps_time = now
@@ -279,7 +372,8 @@ def _apilot_udp_navid_thread(end_event, pm, opkr_debug):
         _apilot_publish(pm, state, opkr_debug)
         last_publish_time = now
   finally:
-    recv_sock.close()
+    for recv_sock, _, _ in recv_socks:
+      recv_sock.close()
     send_sock.close()
 
 def navid_thread(end_event, nv_queue):
@@ -322,8 +416,13 @@ def navid_thread(end_event, nv_queue):
   is_metric = Params().get_bool("IsMetric")
   navi_selection = int(Params().get("OPKRNaviSelect", encoding="utf8"))
 
-  if navi_selection == 4:
-    _apilot_udp_navid_thread(end_event, pm, OPKR_Debug)
+  if navi_selection == 6:
+    manual_hosts = [ip.strip() for ip in external_device_ip.split(',') if ip.strip()]
+    ip_now = Params().get("ExternalDeviceIPNow", encoding="utf8")
+    if ip_now and ip_now.strip() not in manual_hosts:
+      ip_now = ip_now.strip()
+      manual_hosts.append(ip_now)
+    _apilot_udp_navid_thread(end_event, pm, OPKR_Debug, include_nda=True, manual_hosts=manual_hosts)
     return
 
   mtom3 = False
