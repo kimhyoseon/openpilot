@@ -52,6 +52,27 @@ def _to_bool(value):
   return bool(_to_int(value, 0))
 
 
+def _apilot_clear_speed_limit(state):
+  state["speedLimit"] = 0
+  state["safetyDistance"] = 0.
+  state["safetySign"] = 0
+
+
+def _apilot_decay_distances(state, delta_distance):
+  if delta_distance <= 0:
+    return
+
+  if state["speedLimit"] > 0 and state["safetyDistance"] > 0:
+    state["safetyDistance"] = max(0., state["safetyDistance"] - delta_distance)
+    if state["safetyDistance"] <= 0:
+      _apilot_clear_speed_limit(state)
+
+  if state["turnInfo"] > 0 and state["distanceToTurn"] > 0:
+    state["distanceToTurn"] = max(0., state["distanceToTurn"] - delta_distance)
+    if state["distanceToTurn"] <= 0:
+      state["turnInfo"] = 0
+
+
 def _get_broadcast_address():
   try:
     import fcntl
@@ -153,6 +174,8 @@ def _apilot_publish(pm, data, opkr_debug=False):
 
 
 def _apilot_handle_json(payload, state):
+  speed_limit_updated = False
+
   if "active" in payload:
     state["active"] = _to_int(payload.get("active"))
 
@@ -161,16 +184,17 @@ def _apilot_handle_json(payload, state):
     state["roadLimitSpeed"] = _to_int(road_limit.get("road_limit_speed"), state["roadLimitSpeed"])
     state["isHighway"] = _to_bool(road_limit.get("is_highway"))
 
-    cam_speed = _to_int(road_limit.get("cam_limit_speed"), 0)
-    cam_dist = _to_float(road_limit.get("cam_limit_speed_left_dist"), 0.)
-    if cam_speed > 0:
-      state["speedLimit"] = cam_speed
-    if cam_dist > 0:
-      state["safetyDistance"] = cam_dist
-
-    cam_type = _to_int(road_limit.get("cam_type"), 0)
-    if cam_type > 0:
-      state["safetySign"] = cam_type
+    if any(key in road_limit for key in ("cam_limit_speed", "cam_limit_speed_left_dist", "cam_type")):
+      speed_limit_updated = True
+      cam_speed = _to_int(road_limit.get("cam_limit_speed"), 0)
+      cam_dist = _to_float(road_limit.get("cam_limit_speed_left_dist"), 0.)
+      cam_type = _to_int(road_limit.get("cam_type"), 0)
+      if cam_speed > 0 and cam_dist > 0:
+        state["speedLimit"] = cam_speed
+        state["safetyDistance"] = cam_dist
+        state["safetySign"] = cam_type
+      else:
+        _apilot_clear_speed_limit(state)
 
   apilot = payload.get("apilot")
   if isinstance(apilot, dict):
@@ -182,10 +206,21 @@ def _apilot_handle_json(payload, state):
     elif atype == "opkrdistancetoturn":
       state["distanceToTurn"] = _to_float(value)
     elif atype in ("opkrspddist", "opkr-spddist"):
-      state["safetyDistance"] = _to_float(value)
+      speed_limit_updated = True
+      safety_distance = _to_float(value)
+      if safety_distance > 0:
+        state["safetyDistance"] = safety_distance
+      else:
+        _apilot_clear_speed_limit(state)
     elif atype in ("opkrspdlimit", "opkr-spdlimit"):
-      state["speedLimit"] = _to_int(value)
+      speed_limit_updated = True
+      speed_limit = _to_int(value)
+      if speed_limit > 0:
+        state["speedLimit"] = speed_limit
+      else:
+        _apilot_clear_speed_limit(state)
     elif atype in ("opkrsigntype", "opkr-signtype", "opkrroadsigntype"):
+      speed_limit_updated = True
       state["safetySign"] = _to_int(value)
     elif atype in ("opkrroadlimitspeed", "opkrroadlimitspd", "opkrwazeroadspdlimit"):
       state["roadLimitSpeed"] = _to_int(value)
@@ -199,8 +234,16 @@ def _apilot_handle_json(payload, state):
     n_sdi_plus_dist = _to_float(apilot.get("nSdiPlusDist"), -1.)
     n_sdi_plus_speed_limit = _to_int(apilot.get("nSdiPlusSpeedLimit"), -1)
     n_sdi_block_dist = _to_float(apilot.get("nSdiBlockDist"), -1.)
+    sdi_keys_present = any(key in apilot for key in (
+      "nSdiType", "nSdiDist", "nSdiSpeedLimit",
+      "nSdiPlusType", "nSdiPlusDist", "nSdiPlusSpeedLimit",
+      "nSdiBlockType", "nSdiBlockDist", "nSdiBlockSpeed",
+    ))
+    speed_limit_updated = speed_limit_updated or sdi_keys_present
 
-    if n_sdi_type in (0, 1, 2, 3, 4, 8) and n_sdi_speed_limit > 0:
+    if n_sdi_type == 7:
+      _apilot_clear_speed_limit(state)
+    elif n_sdi_type in (0, 1, 2, 3, 4, 8) and n_sdi_speed_limit > 0:
       state["speedLimit"] = n_sdi_speed_limit
       sdi_dist = n_sdi_block_dist if n_sdi_type == 4 and n_sdi_block_dist > 0 else n_sdi_dist
       if sdi_dist > 0:
@@ -216,6 +259,8 @@ def _apilot_handle_json(payload, state):
       state["speedLimit"] = n_sdi_plus_speed_limit
       state["safetyDistance"] = n_sdi_plus_dist
       state["safetySign"] = n_sdi_plus_type
+    elif sdi_keys_present and (n_sdi_type >= 0 or n_sdi_plus_type >= 0 or n_sdi_speed_limit == 0 or n_sdi_dist == 0):
+      _apilot_clear_speed_limit(state)
 
     if n_sdi_type == 24 or n_sdi_plus_type == 24:
       state["isTunnel"] = True
@@ -228,16 +273,26 @@ def _apilot_handle_json(payload, state):
             road_speed = int((road_speed - 20) / 10)
           if road_speed > 0:
             state["roadLimitSpeed"] = road_speed
-        elif key == "nSdiSpeedLimit" and _to_int(apilot.get(key), -1) > 0:
-          state["speedLimit"] = _to_int(apilot.get(key))
-        elif key == "nSdiDist" and _to_float(apilot.get(key), -1.) > 0:
-          state["safetyDistance"] = _to_float(apilot.get(key))
+        elif key == "nSdiSpeedLimit":
+          speed_limit = _to_int(apilot.get(key), -1)
+          if speed_limit > 0:
+            state["speedLimit"] = speed_limit
+          elif speed_limit == 0:
+            _apilot_clear_speed_limit(state)
+        elif key == "nSdiDist":
+          sdi_dist = _to_float(apilot.get(key), -1.)
+          if sdi_dist > 0 and state["speedLimit"] > 0:
+            state["safetyDistance"] = sdi_dist
+          elif sdi_dist == 0:
+            _apilot_clear_speed_limit(state)
         elif key == "nTBTTurnType" and _to_int(apilot.get(key), -1) >= 0:
           state["turnInfo"] = _nda_turn_info(_to_int(apilot.get(key)))
         elif key == "nTBTDist" and _to_float(apilot.get(key), -1.) > 0:
           state["distanceToTurn"] = _to_float(apilot.get(key))
         elif key == "szPosRoadName" and apilot.get(key):
           state["roadName"] = str(apilot.get(key))
+
+  return speed_limit_updated
 
 
 def _nda_turn_info(turn_type):
@@ -277,9 +332,11 @@ def _apilot_udp_navid_thread(end_event, pm, opkr_debug, include_nda=False, manua
   last_broadcast_time = 0.
   last_gps_time = 0.
   last_publish_time = 0.
+  last_distance_time = time.monotonic()
+  last_speed_limit_time = 0.
   request_gps = False
 
-  gps_sm = messaging.SubMaster(['gpsLocationExternal'], poll=['gpsLocationExternal'])
+  nav_sm = messaging.SubMaster(['gpsLocationExternal', 'carState'])
 
   recv_socks = _udp_receive_sockets(include_nda)
 
@@ -289,6 +346,15 @@ def _apilot_udp_navid_thread(end_event, pm, opkr_debug, include_nda=False, manua
   try:
     while not end_event.is_set():
       now = time.monotonic()
+      nav_sm.update(0)
+
+      dt = min(max(0., now - last_distance_time), 1.)
+      last_distance_time = now
+      try:
+        if nav_sm.alive['carState']:
+          _apilot_decay_distances(state, max(0., nav_sm['carState'].vEgo) * dt)
+      except Exception:
+        pass
 
       if now - last_broadcast_time > 5.:
         _apilot_send_discovery(send_sock, remote_addr, include_nda, manual_hosts)
@@ -318,7 +384,8 @@ def _apilot_udp_navid_thread(end_event, pm, opkr_debug, include_nda=False, manua
             except Exception:
               pass
 
-          _apilot_handle_json(payload, state)
+          if _apilot_handle_json(payload, state):
+            last_speed_limit_time = now
           state["connectionAlive"] = True
           last_rx_time = now
 
@@ -335,8 +402,7 @@ def _apilot_udp_navid_thread(end_event, pm, opkr_debug, include_nda=False, manua
 
       if request_gps and remote_addr is not None and now - last_gps_time > 1.:
         try:
-          gps_sm.update(0)
-          location = gps_sm['gpsLocationExternal']
+          location = nav_sm['gpsLocationExternal']
           if location.accuracy < 10.:
             json_location = json.dumps({"location": [
               location.latitude,
@@ -367,6 +433,8 @@ def _apilot_udp_navid_thread(end_event, pm, opkr_debug, include_nda=False, manua
         state["roadName"] = ""
         state["isHighway"] = False
         state["isTunnel"] = False
+      elif state["speedLimit"] > 0 and last_speed_limit_time > 0. and now - last_speed_limit_time > 6.:
+        _apilot_clear_speed_limit(state)
 
       if now - last_publish_time > DT_TRML:
         _apilot_publish(pm, state, opkr_debug)
