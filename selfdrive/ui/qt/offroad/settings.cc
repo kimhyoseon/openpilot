@@ -304,14 +304,17 @@ SoftwarePanel::SoftwarePanel(QWidget* parent) : ListWidget(parent) {
     }
     std::system("/data/openpilot/selfdrive/assets/addon/script/gitcommit.sh");
     std::system("date '+%F %T' > /data/params/d/LastUpdateTime");
-    QString last_ping = QString::fromStdString(params.get("LastAthenaPingTime"));
     QString desc = "";
     QString commit_local = QString::fromStdString(Params().get("GitCommit").substr(0, 10));
-    QString commit_remote = QString::fromStdString(Params().get("GitCommitRemote").substr(0, 10));
+    QString commit_remote_full = QString::fromStdString(Params().get("GitCommitRemote"));
+    QString commit_remote = commit_remote_full.left(10);
     QString empty = "";
     desc += tr("LOCAL: %1  REMOTE: %2%3%4 ").arg(commit_local, commit_remote, empty, empty);
-    if (!last_ping.length()) {
-      desc += tr("Network connection is missing or unstable. Check the connection.");
+    if (commit_remote_full.startsWith("FETCH_FAIL")) {
+      desc += tr("Failed to check GitHub. Check hotspot mobile data, DNS, or GitHub access.");
+      ConfirmationDialog::alert(desc, this);
+    } else if (commit_remote_full.startsWith("DETACHED_HEAD")) {
+      desc += tr("Current git state is detached HEAD. Check out a branch before updating.");
       ConfirmationDialog::alert(desc, this);
     } else if (commit_local == commit_remote) {
       desc += tr("Local and remote match. No update required.");
@@ -325,7 +328,7 @@ SoftwarePanel::SoftwarePanel(QWidget* parent) : ListWidget(parent) {
           if (ConfirmationDialog::confirm(tr("Device will be updated and rebooted. Do you want to proceed?"), this)) {std::system("/data/openpilot/selfdrive/assets/addon/script/gitpull.sh");}
         }
       } else {
-        QString cmd1 = "wget https://raw.githubusercontent.com/openpilotkr/openpilot/"+QString::fromStdString(params.get("GitBranch"))+"/OPKR_Updates.txt -O /data/OPKR_Updates.txt";
+        QString cmd1 = "wget --timeout=10 --tries=1 https://raw.githubusercontent.com/openpilotkr/openpilot/"+QString::fromStdString(params.get("GitBranch"))+"/OPKR_Updates.txt -O /data/OPKR_Updates.txt";
         QProcess::execute(cmd1);
         QTimer::singleShot(2000, []() {});
         if (QFileInfo::exists("/data/OPKR_Updates.txt")) {
@@ -335,6 +338,8 @@ SoftwarePanel::SoftwarePanel(QWidget* parent) : ListWidget(parent) {
           if (UpdateInfoDialog::confirm(desc + "\n" + QString::fromStdString(txt), this)) {
             if (ConfirmationDialog::confirm(tr("Device will be updated and rebooted. Do you want to proceed?"), this)) {std::system("/data/openpilot/selfdrive/assets/addon/script/gitpull.sh");}
           }
+        } else if (ConfirmationDialog::confirm(desc + "\n" + tr("Update details are unavailable. Continue with git update?"), this)) {
+          if (ConfirmationDialog::confirm(tr("Device will be updated and rebooted. Do you want to proceed?"), this)) {std::system("/data/openpilot/selfdrive/assets/addon/script/gitpull.sh");}
         }
       }
     }
