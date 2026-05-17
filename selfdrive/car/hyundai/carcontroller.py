@@ -71,6 +71,7 @@ class CarController():
     self.resume_cnt = 0
     self.last_lead_distance = 0
     self.resume_wait_timer = 0
+    self.low_speed_start_last_frame = -1000
 
     self.last_resume_frame = 0
     self.accel = 0
@@ -506,6 +507,15 @@ class CarController():
 
     if pcm_cancel_cmd and self.longcontrol:
       can_sends.append(create_clu11(self.packer, frame, CS.clu11, Buttons.CANCEL, clu11_speed, CS.CP.sccBus))
+
+    low_speed_start_threshold = 20 if CS.is_set_speed_in_mph else 30
+    low_speed_start_allowed = round(CS.clu_Vanz) < low_speed_start_threshold and (lead_visible or round(CS.clu_Vanz) > 10)
+    if enabled and not CS.out.cruiseState.enabled and CS.out.cruiseState.available and low_speed_start_allowed and \
+       CS.cruise_buttons == Buttons.NONE and self.cancel_counter == 0 and not pcm_cancel_cmd and \
+       not (CS.out.brakePressed or CS.out.brakeLights or CS.out.gasPressed):
+      if (frame - self.low_speed_start_last_frame) * DT_CTRL > 0.1:
+        can_sends.append(create_clu11(self.packer, frame, CS.clu11, Buttons.RES_ACCEL, clu11_speed, CS.CP.sccBus))
+        self.low_speed_start_last_frame = frame
 
     if CS.out.cruiseState.standstill:
       self.standstill_status = 1

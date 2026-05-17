@@ -258,6 +258,7 @@ def manager_init() -> None:
     ("CruiseSetwithRoadLimitSpeedEnabled", "1"),
     ("CruiseSetwithRoadLimitSpeedOffset", "5"),
     ("SetSpeedFive", "0"),
+    ("CruiseSpeedMin", "10"),
     ("OpkrSettingsPresetVersion", ""),
    ]
   if not PC:

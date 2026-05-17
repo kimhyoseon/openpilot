@@ -37,6 +37,13 @@ CRUISE_INTERVAL_SIGN = {
   car.CarState.ButtonEvent.Type.decelCruise: -1,
 }
 
+def get_cruise_speed_min():
+  try:
+    cruise_speed_min = Params().get("CruiseSpeedMin", encoding="utf8")
+    return int(clip(int(cruise_speed_min), 1, V_CRUISE_MAX)) if cruise_speed_min is not None else V_CRUISE_MIN
+  except (TypeError, ValueError):
+    return V_CRUISE_MIN
+
 
 class MPC_COST_LAT:
   PATH = 1.0
@@ -88,7 +95,7 @@ def update_v_cruise(v_cruise_kph, buttonEvents, button_timers, enabled, metric):
       v_cruise_kph = CRUISE_NEAREST_FUNC[button_type](v_cruise_kph / v_cruise_delta) * v_cruise_delta
     else:
       v_cruise_kph += v_cruise_delta * CRUISE_INTERVAL_SIGN[button_type]
-    v_cruise_kph = clip(round(v_cruise_kph, 1), V_CRUISE_MIN, V_CRUISE_MAX)
+    v_cruise_kph = clip(round(v_cruise_kph, 1), get_cruise_speed_min(), V_CRUISE_MAX)
 
   return v_cruise_kph
 
@@ -99,7 +106,7 @@ def initialize_v_cruise(v_ego, buttonEvents, v_cruise_last):
     if b.type == car.CarState.ButtonEvent.Type.accelCruise and v_cruise_last < 250:
       return v_cruise_last
 
-  return int(round(clip(v_ego * CV.MS_TO_KPH, V_CRUISE_ENABLE_MIN, V_CRUISE_MAX)))
+  return int(round(clip(v_ego * CV.MS_TO_KPH, get_cruise_speed_min(), V_CRUISE_MAX)))
 
 
 def get_lag_adjusted_curvature(CP, v_ego, psis, curvatures, curvature_rates):

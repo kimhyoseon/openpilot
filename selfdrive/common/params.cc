@@ -402,6 +402,7 @@ std::unordered_map<std::string, uint32_t> keys = {
     {"CruiseSetwithRoadLimitSpeedOffset", PERSISTENT},
     {"OPKRDebug", PERSISTENT},
     {"SetSpeedFive", PERSISTENT},
+    {"CruiseSpeedMin", PERSISTENT},
 };
 
 } // namespace

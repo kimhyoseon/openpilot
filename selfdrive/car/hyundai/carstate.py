@@ -13,6 +13,13 @@ GearShifter = car.CarState.GearShifter
 
 FCA_OPT = Params().get_bool('RadarDisable')
 
+def get_cruise_speed_min():
+  try:
+    cruise_speed_min = Params().get("CruiseSpeedMin", encoding="utf8")
+    return max(1, min(int(cruise_speed_min), 160)) if cruise_speed_min is not None else 30
+  except (TypeError, ValueError):
+    return 30
+
 class CarState(CarStateBase):
   def __init__(self, CP):
     super().__init__(CP)
@@ -72,6 +79,7 @@ class CarState(CarStateBase):
     self.prev_cruise_btn = False
     self.acc_active = False
     self.cruise_set_speed_kph = 0
+    self.cruise_speed_min = get_cruise_speed_min()
     self.cruise_set_mode = int(Params().get("CruiseStatemodeSelInit", encoding="utf8"))
     self.gasPressed = False
 
@@ -98,6 +106,7 @@ class CarState(CarStateBase):
       self.cruise_set_speed_kph = self.VSetDis
       return self.cruise_set_speed_kph
 
+    min_set_speed = 20 if self.is_set_speed_in_mph else self.cruise_speed_min
     if self.prev_cruise_btn == self.cruise_buttons:
       return self.cruise_set_speed_kph
     elif self.prev_cruise_btn != self.cruise_buttons:
@@ -111,9 +120,9 @@ class CarState(CarStateBase):
         elif not self.prev_acc_set_btn: # first scc active
           self.prev_acc_set_btn = self.acc_active
           if self.cruise_buttons == Buttons.SET_DECEL:
-            self.cruise_set_speed_kph = max(int(round(self.clu_Vanz)), (30 if not self.is_set_speed_in_mph else 20))
+            self.cruise_set_speed_kph = max(int(round(self.clu_Vanz)), min_set_speed)
           elif self.cruise_buttons == Buttons.RES_ACCEL:
-            self.cruise_set_speed_kph = max(set_speed_kph, int(round(self.clu_Vanz)), (30 if not self.is_set_speed_in_mph else 20))
+            self.cruise_set_speed_kph = max(set_speed_kph, int(round(self.clu_Vanz)), min_set_speed)
           return self.cruise_set_speed_kph
 
       elif self.cruise_buttons == Buttons.RES_ACCEL and not self.cruiseState_standstill:   # up 
@@ -131,10 +140,8 @@ class CarState(CarStateBase):
         else:
           set_speed_kph -= 1
 
-      if set_speed_kph <= 30 and not self.is_set_speed_in_mph:
-        set_speed_kph = 30
-      elif set_speed_kph <= 20 and self.is_set_speed_in_mph:
-        set_speed_kph = 20
+      if set_speed_kph <= min_set_speed:
+        set_speed_kph = min_set_speed
 
       self.cruise_set_speed_kph = set_speed_kph
     else:
