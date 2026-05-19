@@ -637,9 +637,7 @@ class Controls:
         if self.cruise_road_limit_spd_enabled:
           self.cruise_road_limit_spd_switch_prev = self.sm['liveENaviData'].roadLimitSpeed
           self.cruise_road_limit_spd_switch = False
-        target_speed = int(math.ceil(max(self.v_cruise_kph, t_speed) / 10.0) * 10)
-        if target_speed <= self.v_cruise_kph:
-          target_speed += 10
+        target_speed = int(self.v_cruise_kph + 10)
         self.v_cruise_kph = clip(target_speed, t_speed, V_CRUISE_MAX)
         self.v_cruise_kph_last = self.v_cruise_kph
       elif self.variable_cruise and self.cruise_road_limit_spd_enabled and current_speed >= t_speed and int(self.v_cruise_kph) != (int(self.sm['liveENaviData'].roadLimitSpeed) + self.cruise_road_limit_spd_offset) and 1 < int(self.sm['liveENaviData'].roadLimitSpeed) < 150 and self.cruise_road_limit_spd_switch:

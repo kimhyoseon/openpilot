@@ -358,7 +358,7 @@ class CruiseMaxSpeedTapUpToggle : public ToggleControl {
   Q_OBJECT
 
 public:
-  CruiseMaxSpeedTapUpToggle() : ToggleControl(tr("Accel Tap MaxSpeed Up"), tr("When using cruise, briefly tap and release the accelerator to raise the max speed to the next 10-unit step."), "../assets/offroad/icon_shell.png", Params().getBool("CruiseMaxSpeedTapUp")) {
+  CruiseMaxSpeedTapUpToggle() : ToggleControl(tr("Accel Tap MaxSpeed Up"), tr("When using cruise, briefly tap and release the accelerator to raise the max speed by 10 units."), "../assets/offroad/icon_shell.png", Params().getBool("CruiseMaxSpeedTapUp")) {
     QObject::connect(this, &CruiseMaxSpeedTapUpToggle::toggleFlipped, [=](int state) {
       bool status = state ? true : false;
       Params().putBool("CruiseMaxSpeedTapUp", status);
