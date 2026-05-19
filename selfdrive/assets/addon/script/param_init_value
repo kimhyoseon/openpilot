@@ -62,7 +62,7 @@ OpkrMaxSteeringAngle:90
 OpkrMaxDriverAngleWait:0.002
 OpkrMaxSteerAngleWait:0.001
 OpkrDriverAngleWait:0.001
-OpkrSpeedLimitOffset:0
+OpkrSpeedLimitOffset:10
 OpkrLiveSteerRatio:1
 OpkrVariableSteerMax:0
 OpkrVariableSteerDelta:0
@@ -168,6 +168,6 @@ CruiseGapBySpdOn:1
 CruiseGapBySpdSpd:25,65,100
 CruiseGapBySpdGap:1,2,3,4
 CruiseSetwithRoadLimitSpeedEnabled:1
-CruiseSetwithRoadLimitSpeedOffset:5
+CruiseSetwithRoadLimitSpeedOffset:15
 SetSpeedFive:0
 OpkrSettingsPresetVersion:2026-05-15-copy-defaults-v2
