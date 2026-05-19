@@ -253,7 +253,7 @@ def manager_init() -> None:
     ("DepartChimeAtResume", "0"),
     ("CommaStockUI", "0"),
     ("CruiseGapBySpdOn", "1"),
-    ("CruiseGapBySpdSpd", "25,65,130"),
+    ("CruiseGapBySpdSpd", "25,65,100"),
     ("CruiseGapBySpdGap", "1,2,3,4"),
     ("CruiseSetwithRoadLimitSpeedEnabled", "1"),
     ("CruiseSetwithRoadLimitSpeedOffset", "5"),
