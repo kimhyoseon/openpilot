@@ -103,7 +103,7 @@ LCTimingFactor110:80
 OpkrUIBrightnessOff:10
 LCTimingFactorEnable:1
 AutoEnableSpeed:9
-SafetyCamDecelDistGain:0
+SafetyCamDecelDistGain:-20
 OpkrLiveTunePanelEnable:0
 RadarLongHelper:2
 LiveSteerRatioPercent:-5

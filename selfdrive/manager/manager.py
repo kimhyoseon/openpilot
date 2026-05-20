@@ -43,6 +43,8 @@ CRUISE_GAP_BY_SPD_LEGACY_DEFAULTS = {"25,65,130", "25,65,135"}
 SPEED_LIMIT_OFFSET_DEFAULT = "10"
 SPEED_LIMIT_OFFSET_PERCENT_OPTION = "0"
 SPEED_LIMIT_OFFSET_LEGACY_DEFAULT = "0"
+SAFETY_CAM_DECEL_DIST_GAIN_DEFAULT = "-20"
+SAFETY_CAM_DECEL_DIST_GAIN_LEGACY_DEFAULT = "0"
 
 
 def manager_init() -> None:
@@ -178,7 +180,7 @@ def manager_init() -> None:
     ("OpkrUIBrightnessOff", "10"),
     ("LCTimingFactorEnable", "1"),
     ("AutoEnableSpeed", "9"),
-    ("SafetyCamDecelDistGain", "0"),
+    ("SafetyCamDecelDistGain", "-20"),
     ("OpkrLiveTunePanelEnable", "0"),
     ("RadarLongHelper", "2"),
     ("GitPullOnBoot", "0"),
@@ -286,6 +288,9 @@ def manager_init() -> None:
   if (params.get("OpkrSpeedLimitOffset", encoding="utf8") == SPEED_LIMIT_OFFSET_LEGACY_DEFAULT and
       params.get("OpkrSpeedLimitOffsetOption", encoding="utf8") == SPEED_LIMIT_OFFSET_PERCENT_OPTION):
     params.put("OpkrSpeedLimitOffset", SPEED_LIMIT_OFFSET_DEFAULT)
+
+  if params.get("SafetyCamDecelDistGain", encoding="utf8") == SAFETY_CAM_DECEL_DIST_GAIN_LEGACY_DEFAULT:
+    params.put("SafetyCamDecelDistGain", SAFETY_CAM_DECEL_DIST_GAIN_DEFAULT)
 
   if params.get("OpkrSettingsPresetVersion", encoding="utf8") != OPKR_SETTINGS_PRESET_VERSION:
     for k, v in OPKR_SETTINGS_PRESET_PARAMS:
