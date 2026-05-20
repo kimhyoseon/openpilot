@@ -80,6 +80,7 @@ class NaviControl():
     self.navi_sel = int(Params().get("OPKRNaviSelect", encoding="utf8"))
 
     self.na_timer = 0
+    self.params_refresh_timer = 0
     self.t_interval = 7
     self.faststart = False
     self.safetycam_speed = 0
@@ -548,9 +549,15 @@ class NaviControl():
   def update(self, CS, path_plan):
     self.sm.update(0)
     self.na_timer += 1
+    self.params_refresh_timer += 1
     if self.na_timer > 100:
       self.na_timer = 0
       self.speedlimit_decel_off = Params().get_bool("SpeedLimitDecelOff")
+    if self.params_refresh_timer > 500:
+      self.params_refresh_timer = 0
+      self.map_spdlimit_offset = int(Params().get("OpkrSpeedLimitOffset", encoding="utf8"))
+      self.map_spdlimit_offset_option = int(Params().get("OpkrSpeedLimitOffsetOption", encoding="utf8"))
+      self.safetycam_decel_dist_gain = int(Params().get("SafetyCamDecelDistGain", encoding="utf8"))
     btn_signal = None
     if not self.button_status(CS):  # 사용자가 버튼클릭하면 일정시간 기다린다.
       pass

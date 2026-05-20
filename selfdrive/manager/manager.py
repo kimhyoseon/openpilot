@@ -40,6 +40,9 @@ OPKR_SETTINGS_PRESET_PARAMS: List[Tuple[str, str]] = [
 ]
 CRUISE_GAP_BY_SPD_DEFAULT = "25,65,100"
 CRUISE_GAP_BY_SPD_LEGACY_DEFAULTS = {"25,65,130", "25,65,135"}
+SPEED_LIMIT_OFFSET_DEFAULT = "10"
+SPEED_LIMIT_OFFSET_PERCENT_OPTION = "0"
+SPEED_LIMIT_OFFSET_LEGACY_DEFAULT = "0"
 
 
 def manager_init() -> None:
@@ -279,6 +282,10 @@ def manager_init() -> None:
 
   if params.get("CruiseGapBySpdSpd", encoding="utf8") in CRUISE_GAP_BY_SPD_LEGACY_DEFAULTS:
     params.put("CruiseGapBySpdSpd", CRUISE_GAP_BY_SPD_DEFAULT)
+
+  if (params.get("OpkrSpeedLimitOffset", encoding="utf8") == SPEED_LIMIT_OFFSET_LEGACY_DEFAULT and
+      params.get("OpkrSpeedLimitOffsetOption", encoding="utf8") == SPEED_LIMIT_OFFSET_PERCENT_OPTION):
+    params.put("OpkrSpeedLimitOffset", SPEED_LIMIT_OFFSET_DEFAULT)
 
   if params.get("OpkrSettingsPresetVersion", encoding="utf8") != OPKR_SETTINGS_PRESET_VERSION:
     for k, v in OPKR_SETTINGS_PRESET_PARAMS:

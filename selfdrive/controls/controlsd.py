@@ -371,6 +371,9 @@ class Controls:
       self.live_sr = Params().get_bool("OpkrLiveSteerRatio")
       self.live_sr_percent = int(Params().get("LiveSteerRatioPercent", encoding="utf8"))
       self.cruise_max_speed_tap_up = Params().get_bool("CruiseMaxSpeedTapUp")
+      self.cruise_road_limit_spd_offset = int(Params().get("CruiseSetwithRoadLimitSpeedOffset", encoding="utf8"))
+      self.osm_waze_spdlimit_offset = int(Params().get("OpkrSpeedLimitOffset", encoding="utf8"))
+      self.osm_waze_spdlimit_offset_option = int(Params().get("OpkrSpeedLimitOffsetOption", encoding="utf8"))
       # E2ELongAlert
       if Params().get_bool("E2ELong") and self.e2e_long_alert_prev:
         self.events.add(EventName.e2eLongAlert)
