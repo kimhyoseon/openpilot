@@ -38,6 +38,8 @@ OPKR_SETTINGS_PRESET_PARAMS: List[Tuple[str, str]] = [
     ("OPKRNaviSelect", "6"),
     ("OpkrBattLess", "1"),
 ]
+CRUISE_GAP_BY_SPD_DEFAULT = "25,65,100"
+CRUISE_GAP_BY_SPD_LEGACY_DEFAULTS = {"25,65,130", "25,65,135"}
 
 
 def manager_init() -> None:
@@ -274,6 +276,9 @@ def manager_init() -> None:
   for k, v in default_params:
     if params.get(k) is None:
       params.put(k, v)
+
+  if params.get("CruiseGapBySpdSpd", encoding="utf8") in CRUISE_GAP_BY_SPD_LEGACY_DEFAULTS:
+    params.put("CruiseGapBySpdSpd", CRUISE_GAP_BY_SPD_DEFAULT)
 
   if params.get("OpkrSettingsPresetVersion", encoding="utf8") != OPKR_SETTINGS_PRESET_VERSION:
     for k, v in OPKR_SETTINGS_PRESET_PARAMS:
