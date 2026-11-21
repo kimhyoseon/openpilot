@@ -88,6 +88,12 @@ function two_init {
   # wifi scan
   wpa_cli IFNAME=wlan0 SCAN
 
+  # nMirror phone hotspot has no IPv4 internet (IPv6-only carrier), so Android's internet check
+  # marks it "no internet" and then stops auto-joining it (manual tap still works).
+  # Turn the check off so saved Wi-Fi without internet is still auto-joined.
+  LD_LIBRARY_PATH="" settings put global captive_portal_detection_enabled 0
+  LD_LIBRARY_PATH="" settings put global captive_portal_mode 0
+
   # Check for NEOS update
   if [ $(< /VERSION) != "$REQUIRED_NEOS_VERSION" ]; then
     echo "Installing NEOS update"
