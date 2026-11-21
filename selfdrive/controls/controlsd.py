@@ -15,7 +15,7 @@ from selfdrive.boardd.boardd import can_list_to_can_capnp
 from selfdrive.car.car_helpers import get_car, get_startup_event, get_one_can
 from selfdrive.controls.lib.lane_planner import CAMERA_OFFSET, CAMERA_OFFSET_A
 from selfdrive.controls.lib.drive_helpers import update_v_cruise, initialize_v_cruise, V_CRUISE_MAX
-from selfdrive.controls.lib.cruise_road_limit import get_initial_set_speed_override, should_resume_road_limit_sync
+from selfdrive.controls.lib.cruise_road_limit import should_raise_to_road_limit, should_resume_road_limit_sync
 from selfdrive.controls.lib.drive_helpers import get_lag_adjusted_curvature
 from selfdrive.controls.lib.longcontrol import LongControl
 from selfdrive.controls.lib.latcontrol_pid import LatControlPID
@@ -124,7 +124,6 @@ class Controls:
 
     self.cruise_road_limit_spd_switch = True
     self.cruise_road_limit_spd_switch_prev = 0
-    self.initial_set_speed_override_kph = None
 
     # detect sound card presence and ensure successful init
     sounds_available = HARDWARE.get_sound_card_online()
@@ -562,9 +561,6 @@ class Controls:
     road_limit_speed_valid = 1 < road_limit_speed < 150
     road_limit_target_speed = road_limit_speed + self.cruise_road_limit_spd_offset
 
-    if CS.cruiseButtons != Buttons.SET_DECEL:
-      self.initial_set_speed_override_kph = None
-
     driver_accel_tap = False
     if CS.driverAcc:
       self.driver_accel_tap_frames += 1
@@ -622,23 +618,14 @@ class Controls:
           elif self.osm_speedlimit_enabled:
             self.osm_waze_speedlimit = round(self.sm['liveMapData'].speedLimit)
       elif (CS.cruiseButtons == Buttons.RES_ACCEL and not self.v_cruise_kph_set_timer) or CS.cruiseButtons == Buttons.SET_DECEL:
-        preserve_current_speed_on_set = self.initial_set_speed_override_kph is not None
         if self.cruise_road_limit_spd_enabled and CS.cruiseButtons == Buttons.SET_DECEL:
-          initial_set_speed_override_kph = get_initial_set_speed_override(self.initial_set_speed_override_kph, self.enabled, current_speed, road_limit_target_speed, road_limit_speed_valid)
-          start_current_speed_override = not preserve_current_speed_on_set and initial_set_speed_override_kph is not None
-          if start_current_speed_override:
-            self.initial_set_speed_override_kph = initial_set_speed_override_kph
-            preserve_current_speed_on_set = True
-            self.cruise_road_limit_spd_switch = False
+          self.cruise_road_limit_spd_switch = current_speed >= t_speed or road_limit_speed_valid
+          if not self.cruise_road_limit_spd_switch:
             self.cruise_road_limit_spd_switch_prev = road_limit_speed
-          elif not preserve_current_speed_on_set:
-            self.cruise_road_limit_spd_switch = current_speed >= t_speed or road_limit_speed_valid
-            if not self.cruise_road_limit_spd_switch:
-              self.cruise_road_limit_spd_switch_prev = road_limit_speed
         elif self.cruise_road_limit_spd_enabled and CS.cruiseButtons == Buttons.RES_ACCEL:
           self.cruise_road_limit_spd_switch_prev = self.sm['liveENaviData'].roadLimitSpeed
           self.cruise_road_limit_spd_switch = False
-        self.v_cruise_kph = self.initial_set_speed_override_kph if preserve_current_speed_on_set else round(CS.cruiseState.speed * m_unit)
+        self.v_cruise_kph = round(CS.cruiseState.speed * m_unit)
         self.v_cruise_kph_last = self.v_cruise_kph
         if self.osm_speedlimit_enabled or self.navi_selection in (3,5):
           self.osm_waze_off_spdlimit_init = True
@@ -660,7 +647,7 @@ class Controls:
         target_speed = int(self.v_cruise_kph + 10)
         self.v_cruise_kph = clip(target_speed, t_speed, V_CRUISE_MAX)
         self.v_cruise_kph_last = self.v_cruise_kph
-      elif self.variable_cruise and self.cruise_road_limit_spd_enabled and (current_speed >= t_speed or road_limit_speed_valid) and int(self.v_cruise_kph) != road_limit_target_speed and road_limit_speed_valid and self.cruise_road_limit_spd_switch:
+      elif self.variable_cruise and self.cruise_road_limit_spd_enabled and (current_speed >= t_speed or road_limit_speed_valid) and should_raise_to_road_limit(int(self.v_cruise_kph), road_limit_target_speed, road_limit_speed_valid) and self.cruise_road_limit_spd_switch:
         self.v_cruise_kph = road_limit_target_speed
         self.v_cruise_kph_last = self.v_cruise_kph
       elif self.variable_cruise and CS.cruiseState.modeSel != 0 and (self.osm_speedlimit_enabled or (self.map_enabled and self.navi_selection == 3) or self.navi_selection == 5) and self.osm_waze_off_spdlimit_init:
